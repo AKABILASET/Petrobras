@@ -1,0 +1,412 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  BookOpen, 
+  CheckCircle, 
+  BarChart2, 
+  AlertCircle, 
+  ChevronDown, 
+  ChevronRight, 
+  Save, 
+  RotateCcw,
+  Trophy,
+  Activity,
+  Filter,
+  Youtube,
+  ExternalLink,
+  PlayCircle
+} from 'lucide-react';
+
+// --- DADOS DO EDITAL (VERTICALIZADO) ---
+// Extraído do Anexo III - Ênfase 16: Engenharia de Petróleo
+const EDITAL_DATA = [
+  {
+    id: 'basicos',
+    title: 'Conhecimentos Básicos',
+    weight: 'Eliminatório/Classificatório',
+    topics: [
+      { id: 'port-1', name: 'Língua Portuguesa: Compreensão e interpretação de textos' },
+      { id: 'port-2', name: 'Língua Portuguesa: Ortografia oficial e acentuação' },
+      { id: 'port-3', name: 'Língua Portuguesa: Gramática (Verbos, Concordância, Regência, Crase)' },
+      { id: 'port-4', name: 'Língua Portuguesa: Mecanismos de coesão textual' },
+      { id: 'ing-1', name: 'Língua Inglesa: Compreensão de textos técnicos' },
+      { id: 'ing-2', name: 'Língua Inglesa: Itens gramaticais relevantes' },
+    ]
+  },
+  {
+    id: 'bloco1',
+    title: 'Conhecimentos Específicos - Bloco I',
+    weight: 'Engenharia Geral (Parte 1)',
+    topics: [
+      { id: 'b1-1', name: 'Álgebra Linear' },
+      { id: 'b1-2', name: 'Cálculo diferencial e integral' },
+      { id: 'b1-3', name: 'Física básica: Movimento, força, impulso e trabalho' },
+      { id: 'b1-4', name: 'Mecânica dos fluidos: Propriedades, hidrostática, conservação de massa/energia' },
+      { id: 'b1-5', name: 'Resistência dos materiais: Tensão, deformação, força cortante, momento fletor' },
+    ]
+  },
+  {
+    id: 'bloco2',
+    title: 'Conhecimentos Específicos - Bloco II',
+    weight: 'Engenharia Geral (Parte 2)',
+    topics: [
+      { id: 'b2-1', name: 'Cálculo vetorial e matricial' },
+      { id: 'b2-2', name: 'Análise combinatória e Progressões' },
+      { id: 'b2-3', name: 'Geometria: Plana, Espacial e Analítica' },
+      { id: 'b2-4', name: 'Estática dos corpos rígidos e Momento de inércia' },
+      { id: 'b2-5', name: 'Física: Acústica e Ótica' },
+      { id: 'b2-6', name: 'Eletricidade e Eletromagnetismo' },
+      { id: 'b2-7', name: 'Teoria da elasticidade' },
+      { id: 'b2-8', name: 'Termodinâmica: 1ª e 2ª Leis, substâncias puras' },
+      { id: 'b2-9', name: 'Gases, misturas e soluções ideais' },
+      { id: 'b2-10', name: 'Transferência de calor: Condução, convecção e radiação' },
+      { id: 'b2-11', name: 'Transferência de massa' },
+    ]
+  },
+  {
+    id: 'bloco3',
+    title: 'Conhecimentos Específicos - Bloco III',
+    weight: 'Específica de Petróleo e Ferramentas',
+    topics: [
+      { id: 'b3-1', name: 'Lógica, Conjuntos e Funções' },
+      { id: 'b3-2', name: 'Probabilidade e Estatística descritiva' },
+      { id: 'b3-3', name: 'Matemática financeira' },
+      { id: 'b3-4', name: 'Geologia do Petróleo' },
+      { id: 'b3-5', name: 'Geofísica de Petróleo' },
+      { id: 'b3-6', name: 'Perfuração de Poços' },
+      { id: 'b3-7', name: 'Avaliação das Formações' },
+      { id: 'b3-8', name: 'Completação de Poços' },
+      { id: 'b3-9', name: 'Engenharia de Reservatórios' },
+      { id: 'b3-10', name: 'Elevação e Escoamento' },
+      { id: 'b3-11', name: 'Sistemas Submarinos de Produção' },
+      { id: 'b3-12', name: 'Processamento Primário de Petróleo' },
+      { id: 'b3-13', name: 'Química Básica: Estequiometria, soluções, orgânica' },
+    ]
+  }
+];
+
+const STATUS_OPTIONS = [
+  { value: 'not_started', label: 'Não Iniciado', color: 'bg-gray-100 text-gray-600', icon: AlertCircle },
+  { value: 'studying', label: 'Estudando', color: 'bg-blue-100 text-blue-700', icon: BookOpen },
+  { value: 'reviewing', label: 'Em Revisão', color: 'bg-yellow-100 text-yellow-700', icon: RotateCcw },
+  { value: 'mastered', label: 'Dominado', color: 'bg-green-100 text-green-700', icon: CheckCircle },
+];
+
+export default function App() {
+  // --- STATE MANAGEMENT ---
+  const [progressData, setProgressData] = useState({});
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [expandedSections, setExpandedSections] = useState({
+    basicos: false,
+    bloco1: false,
+    bloco2: false,
+    bloco3: true 
+  });
+
+  // Load from local storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('petroTrackerData');
+    if (saved) {
+      try {
+        setProgressData(JSON.parse(saved));
+      } catch (e) {
+        console.error("Erro ao carregar dados", e);
+      }
+    }
+  }, []);
+
+  // Save to local storage whenever progress changes
+  useEffect(() => {
+    localStorage.setItem('petroTrackerData', JSON.stringify(progressData));
+  }, [progressData]);
+
+  // --- ACTIONS ---
+  const updateStatus = (topicId, newStatus) => {
+    setProgressData(prev => ({
+      ...prev,
+      [topicId]: newStatus
+    }));
+  };
+
+  const toggleSection = (sectionId) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }));
+  };
+
+  const resetProgress = () => {
+    if (window.confirm("Tem certeza que deseja apagar todo o seu progresso?")) {
+      setProgressData({});
+      localStorage.removeItem('petroTrackerData');
+    }
+  };
+
+  // --- YOUTUBE LINK GENERATOR ---
+  const openYoutubePlaylist = (topicName) => {
+    // Cria uma string de busca otimizada
+    const searchQuery = `${topicName} concurso petrobras`;
+    // sp=EgIQAw%3D%3D é o parâmetro mágico do YouTube para filtrar apenas PLAYLISTS
+    const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}&sp=EgIQAw%3D%3D`;
+    window.open(youtubeUrl, '_blank');
+  };
+
+  // --- CALCULATIONS FOR DASHBOARD ---
+  const stats = useMemo(() => {
+    let totalTopics = 0;
+    let completedTopics = 0; 
+    let inProgressTopics = 0; 
+    
+    const blockStats = EDITAL_DATA.map(block => {
+      let blockTotal = block.topics.length;
+      let blockCompleted = 0;
+      let blockProgress = 0;
+
+      block.topics.forEach(topic => {
+        const status = progressData[topic.id] || 'not_started';
+        if (status === 'mastered') {
+          blockCompleted++;
+          completedTopics++;
+        } else if (status === 'studying' || status === 'reviewing') {
+          blockProgress++;
+          inProgressTopics++;
+        }
+      });
+      
+      totalTopics += blockTotal;
+      return {
+        id: block.id,
+        title: block.title,
+        total: blockTotal,
+        completed: blockCompleted,
+        percent: Math.round((blockCompleted / blockTotal) * 100)
+      };
+    });
+
+    const totalPercent = totalTopics === 0 ? 0 : Math.round((completedTopics / totalTopics) * 100);
+    const progressPercent = totalTopics === 0 ? 0 : Math.round(((completedTopics + inProgressTopics) / totalTopics) * 100);
+
+    return { totalTopics, completedTopics, inProgressTopics, totalPercent, progressPercent, blockStats };
+  }, [progressData]);
+
+  // --- RENDER COMPONENTS ---
+
+  const ProgressBar = ({ percent, colorClass = "bg-green-500", height = "h-4" }) => (
+    <div className={`w-full bg-gray-200 rounded-full ${height} overflow-hidden`}>
+      <div 
+        className={`${colorClass} ${height} transition-all duration-500 ease-out`} 
+        style={{ width: `${percent}%` }}
+      ></div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      {/* HEADER */}
+      <header className="bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-lg sticky top-0 z-50">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
+          <div className="flex items-center mb-4 md:mb-0">
+            <div className="bg-yellow-500 p-2 rounded-lg mr-3 shadow-md">
+              <Activity size={24} className="text-slate-900" />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight">PetroTracker</h1>
+              <p className="text-xs md:text-sm text-slate-300 font-light">Ênfase 16: Engenharia de Petróleo</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2 bg-slate-700/50 p-1 rounded-lg">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center ${
+                activeTab === 'dashboard' 
+                  ? 'bg-yellow-500 text-slate-900 shadow-sm' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-600'
+              }`}
+            >
+              <BarChart2 size={16} className="mr-2" />
+              Painel
+            </button>
+            <button
+              onClick={() => setActiveTab('syllabus')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center ${
+                activeTab === 'syllabus' 
+                  ? 'bg-yellow-500 text-slate-900 shadow-sm' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-600'
+              }`}
+            >
+              <BookOpen size={16} className="mr-2" />
+              Edital Verticalizado
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        
+        {/* DASHBOARD VIEW */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Main Stats Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+              <h2 className="text-lg font-semibold text-slate-700 mb-6 flex items-center">
+                <Trophy className="mr-2 text-yellow-500" />
+                Progresso Geral
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="text-3xl font-bold text-slate-900">{stats.totalPercent}%</div>
+                  <div className="text-sm text-slate-500">Conteúdo Dominado</div>
+                  <div className="mt-2"><ProgressBar percent={stats.totalPercent} colorClass="bg-green-500" height="h-2" /></div>
+                </div>
+                
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="text-3xl font-bold text-blue-600">{stats.progressPercent}%</div>
+                  <div className="text-sm text-slate-500">Já Iniciado</div>
+                  <div className="mt-2"><ProgressBar percent={stats.progressPercent} colorClass="bg-blue-500" height="h-2" /></div>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="text-3xl font-bold text-slate-400">{stats.totalTopics - stats.completedTopics}</div>
+                  <div className="text-sm text-slate-500">Tópicos Restantes</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Block Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {stats.blockStats.map((block) => (
+                <div key={block.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-end mb-2">
+                    <h3 className="font-semibold text-slate-700">{block.title}</h3>
+                    <span className="text-sm font-bold text-slate-900">{block.percent}%</span>
+                  </div>
+                  <ProgressBar percent={block.percent} colorClass="bg-indigo-500" />
+                  <div className="mt-3 text-xs text-slate-500 flex justify-between">
+                    <span>{block.completed} de {block.total} tópicos dominados</span>
+                    {block.percent === 100 && <span className="text-green-600 font-bold flex items-center"><CheckCircle size={12} className="mr-1"/> Completo</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex items-start">
+              <Youtube className="shrink-0 mr-3 mt-0.5 text-red-600" size={18} />
+              <div>
+                <strong>Nova Funcionalidade:</strong> Agora você pode clicar no botão <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-xs font-bold border border-red-200 mx-1"><PlayCircle size={10} className="mr-1"/> Aulas</span> na aba de Edital para encontrar playlists completas de estudo no YouTube automaticamente.
+              </div>
+            </div>
+            
+            <div className="text-center pt-8">
+                <button onClick={resetProgress} className="text-red-500 hover:text-red-700 text-xs underline">
+                    Resetar todo o progresso (Ação Irreversível)
+                </button>
+            </div>
+          </div>
+        )}
+
+        {/* SYLLABUS VIEW */}
+        {activeTab === 'syllabus' && (
+          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+            {EDITAL_DATA.map((block) => (
+              <div key={block.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                {/* Accordion Header */}
+                <button 
+                  onClick={() => toggleSection(block.id)}
+                  className="w-full flex items-center justify-between p-5 bg-white hover:bg-slate-50 transition-colors border-b border-slate-100"
+                >
+                  <div className="flex items-center gap-3">
+                    {expandedSections[block.id] ? <ChevronDown size={20} className="text-slate-400"/> : <ChevronRight size={20} className="text-slate-400"/>}
+                    <div className="text-left">
+                      <h3 className="font-bold text-slate-800 text-lg">{block.title}</h3>
+                      <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">{block.weight}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Mini Progress for Section */}
+                  <div className="flex items-center gap-3">
+                    <div className="hidden md:block w-32">
+                        <ProgressBar percent={stats.blockStats.find(b => b.id === block.id).percent} height="h-2" />
+                    </div>
+                    <span className="text-sm font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                        {stats.blockStats.find(b => b.id === block.id).percent}%
+                    </span>
+                  </div>
+                </button>
+
+                {/* Accordion Content */}
+                {expandedSections[block.id] && (
+                  <div className="bg-slate-50/50 p-2 md:p-4">
+                    <div className="grid gap-2">
+                      {block.topics.map((topic) => {
+                        const currentStatus = progressData[topic.id] || 'not_started';
+                        return (
+                          <div key={topic.id} className="bg-white p-3 md:p-4 rounded-lg border border-slate-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-sm hover:shadow-md transition-shadow">
+                            
+                            {/* Topic Name and ID */}
+                            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                                <span className="text-xs text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded w-fit">{topic.id.toUpperCase()}</span>
+                                <span 
+                                    className={`font-medium cursor-pointer hover:text-blue-600 transition-colors ${currentStatus === 'mastered' ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                                    onClick={() => openYoutubePlaylist(topic.name)}
+                                    title="Clique para buscar aulas"
+                                >
+                                    {topic.name}
+                                </span>
+                            </div>
+                            
+                            {/* Controls: Youtube Button + Status Buttons */}
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                <button
+                                    onClick={() => openYoutubePlaylist(topic.name)}
+                                    className="flex items-center px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-md border border-red-100 transition-all text-xs font-semibold group whitespace-nowrap"
+                                    title="Buscar Playlist no YouTube"
+                                >
+                                    <PlayCircle size={14} className="mr-1.5 group-hover:scale-110 transition-transform" />
+                                    Ver Aulas
+                                    <ExternalLink size={10} className="ml-1 opacity-50" />
+                                </button>
+                                
+                                <div className="w-px h-6 bg-slate-200 hidden sm:block"></div>
+
+                                <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide">
+                                    {STATUS_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            onClick={() => updateStatus(topic.id, option.value)}
+                                            className={`
+                                                px-3 py-1.5 rounded-md text-xs font-semibold flex items-center whitespace-nowrap transition-all border
+                                                ${currentStatus === option.value 
+                                                    ? `${option.color} border-transparent ring-2 ring-offset-1 ring-slate-200` 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
+                                            `}
+                                        >
+                                            <option.icon size={12} className="mr-1.5" />
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 text-center">
+                <p className="flex items-center justify-center gap-2">
+                    <Save size={16} />
+                    Seu progresso é salvo automaticamente neste dispositivo.
+                </p>
+            </div>
+          </div>
+        )}
+
+      </main>
+    </div>
+  );
+}
+
