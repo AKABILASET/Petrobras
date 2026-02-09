@@ -13,7 +13,16 @@ import {
   Filter,
   Youtube,
   ExternalLink,
-  PlayCircle
+  PlayCircle,
+  Clock,
+  Calendar,
+  Target,
+  Award,
+  Brain,
+  Timer,
+  Pause,
+  Play,
+  Volume2
 } from 'lucide-react';
 
 // --- DADOS DO EDITAL (VERTICALIZADO) ---
@@ -91,6 +100,38 @@ const STATUS_OPTIONS = [
   { value: 'mastered', label: 'Dominado', color: 'bg-green-100 text-green-700', icon: CheckCircle },
 ];
 
+// Tipos de lembrete para revisão espaçada
+const SPACED_REPETITION_INTERVALS = {
+  'not_started': 0,
+  'studying': 1, // 1 dia
+  'reviewing': 3, // 3 dias
+  'mastered': 7 // 7 dias
+};
+
+// Dados para flashcards (exemplos)
+const FLASHCARDS_DATA = {
+  'b1-1': [
+    { question: 'O que é Álgebra Linear?', answer: 'Ramo da matemática que estuda vetores, espaços vetoriais, transformações lineares e sistemas de equações lineares.' },
+    { question: 'O que é um vetor?', answer: 'Uma quantidade que tem magnitude e direção, representada por uma seta em um espaço.' },
+    { question: 'O que é uma matriz?', answer: 'Uma estrutura retangular de números organizados em linhas e colunas.' }
+  ],
+  'b1-2': [
+    { question: 'O que é derivada?', answer: 'A taxa de variação instantânea de uma função em relação a uma variável.' },
+    { question: 'O que é integral?', answer: 'Operação inversa da derivada; representa áreas sob curvas ou acumulação.' },
+    { question: 'Qual é o teorema fundamental do cálculo?', answer: 'Relaciona derivação e integração, afirmando que são operações inversas.' }
+  ],
+  'b1-3': [
+    { question: 'O que é movimento?', answer: 'Mudança de posição de um objeto ao longo do tempo em relação a um referencial.' },
+    { question: 'O que é força?', answer: 'Interação que pode alterar o estado de movimento ou forma de um corpo.' },
+    { question: 'O que é trabalho?', answer: 'Produto da força aplicada por deslocamento na direção da força.' }
+  ],
+  'b3-1': [
+    { question: 'O que é lógica matemática?', answer: 'Área da matemática que estuda princípios de raciocínio válido.' },
+    { question: 'O que é um conjunto?', answer: 'Coleção bem definida de objetos distintos.' },
+    { question: 'O que é uma função?', answer: 'Relação entre dois conjuntos onde cada elemento do primeiro conjunto está associado a exatamente um elemento do segundo.' }
+  ]
+};
+
 export default function App() {
   // --- STATE MANAGEMENT ---
   const [progressData, setProgressData] = useState({});
@@ -101,15 +142,57 @@ export default function App() {
     bloco2: false,
     bloco3: true 
   });
+  
+  // Novos estados para funcionalidades avançadas
+  const [studyTimer, setStudyTimer] = useState(25); // Tempo padrão Pomodoro em minutos
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [currentTimerMode, setCurrentTimerMode] = useState('work'); // 'work' ou 'break'
+  const [selectedFlashcardTopic, setSelectedFlashcardTopic] = useState(null);
+  const [currentFlashcardIndex, setCurrentFlashcardIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [studyGoals, setStudyGoals] = useState({
+    dailyMinutes: 120,
+    weeklyTopics: 10
+  });
+  const [completedToday, setCompletedToday] = useState([]);
+  const [completedThisWeek, setCompletedThisWeek] = useState([]);
 
   // Load from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem('petroTrackerData');
+    const savedGoals = localStorage.getItem('studyGoals');
+    const savedCompleted = localStorage.getItem('completedToday');
+    const savedWeekly = localStorage.getItem('completedThisWeek');
+    
     if (saved) {
       try {
         setProgressData(JSON.parse(saved));
       } catch (e) {
         console.error("Erro ao carregar dados", e);
+      }
+    }
+    
+    if (savedGoals) {
+      try {
+        setStudyGoals(JSON.parse(savedGoals));
+      } catch (e) {
+        console.error("Erro ao carregar metas", e);
+      }
+    }
+    
+    if (savedCompleted) {
+      try {
+        setCompletedToday(JSON.parse(savedCompleted));
+      } catch (e) {
+        console.error("Erro ao carregar atividades de hoje", e);
+      }
+    }
+    
+    if (savedWeekly) {
+      try {
+        setCompletedThisWeek(JSON.parse(savedWeekly));
+      } catch (e) {
+        console.error("Erro ao carregar atividades da semana", e);
       }
     }
   }, []);
@@ -118,6 +201,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('petroTrackerData', JSON.stringify(progressData));
   }, [progressData]);
+  
+  // Save goals and completed activities
+  useEffect(() => {
+    localStorage.setItem('studyGoals', JSON.stringify(studyGoals));
+  }, [studyGoals]);
+  
+  useEffect(() => {
+    localStorage.setItem('completedToday', JSON.stringify(completedToday));
+  }, [completedToday]);
+  
+  useEffect(() => {
+    localStorage.setItem('completedThisWeek', JSON.stringify(completedThisWeek));
+  }, [completedThisWeek]);
 
   // --- ACTIONS ---
   const updateStatus = (topicId, newStatus) => {
@@ -125,6 +221,16 @@ export default function App() {
       ...prev,
       [topicId]: newStatus
     }));
+    
+    // Adiciona tópico como completado hoje/semana quando muda para 'mastered'
+    if (newStatus === 'mastered') {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const weekNumber = getWeekNumber(now);
+      
+      setCompletedToday(prev => [...prev, { topicId, date: today }]);
+      setCompletedThisWeek(prev => [...prev, { topicId, week: weekNumber }]);
+    }
   };
 
   const toggleSection = (sectionId) => {
@@ -138,7 +244,107 @@ export default function App() {
     if (window.confirm("Tem certeza que deseja apagar todo o seu progresso?")) {
       setProgressData({});
       localStorage.removeItem('petroTrackerData');
+      setCompletedToday([]);
+      setCompletedThisWeek([]);
+      localStorage.removeItem('completedToday');
+      localStorage.removeItem('completedThisWeek');
     }
+  };
+
+  // Função auxiliar para obter número da semana
+  const getWeekNumber = (date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  };
+
+  // --- POMODORO TIMER FUNCTIONS ---
+  const startTimer = () => {
+    setIsTimerRunning(true);
+  };
+
+  const pauseTimer = () => {
+    setIsTimerRunning(false);
+  };
+
+  const resetTimer = () => {
+    setIsTimerRunning(false);
+    setCurrentTimerMode('work');
+    setStudyTimer(studyGoals.dailyMinutes / 60 * 25); // Define para 25 min padrão ou calcula baseado nas metas
+  };
+
+  const switchToBreak = () => {
+    setCurrentTimerMode('break');
+    setStudyTimer(5); // Tempo de pausa padrão
+    setIsTimerRunning(true);
+  };
+
+  const switchToWork = () => {
+    setCurrentTimerMode('work');
+    setStudyTimer(25); // Tempo de estudo padrão
+    setIsTimerRunning(true);
+  };
+
+  // --- FLASHCARDS FUNCTIONS ---
+  const openFlashcards = (topicId) => {
+    if (FLASHCARDS_DATA[topicId]) {
+      setSelectedFlashcardTopic(topicId);
+      setCurrentFlashcardIndex(0);
+      setShowAnswer(false);
+    }
+  };
+
+  const nextFlashcard = () => {
+    const flashcards = FLASHCARDS_DATA[selectedFlashcardTopic];
+    if (currentFlashcardIndex < flashcards.length - 1) {
+      setCurrentFlashcardIndex(currentFlashcardIndex + 1);
+      setShowAnswer(false);
+    } else {
+      // Reinicia o baralho quando termina
+      setCurrentFlashcardIndex(0);
+      setShowAnswer(false);
+    }
+  };
+
+  const prevFlashcard = () => {
+    if (currentFlashcardIndex > 0) {
+      setCurrentFlashcardIndex(currentFlashcardIndex - 1);
+      setShowAnswer(false);
+    }
+  };
+
+  const toggleShowAnswer = () => {
+    setShowAnswer(!showAnswer);
+  };
+
+  const closeFlashcards = () => {
+    setSelectedFlashcardTopic(null);
+    setCurrentFlashcardIndex(0);
+    setShowAnswer(false);
+  };
+
+  // --- STUDY GOALS FUNCTIONS ---
+  const updateDailyGoal = (minutes) => {
+    setStudyGoals(prev => ({ ...prev, dailyMinutes: minutes }));
+  };
+
+  const updateWeeklyGoal = (topics) => {
+    setStudyGoals(prev => ({ ...prev, weeklyTopics: topics }));
+  };
+
+  // --- CALCULATIONS FOR IMPROVED DASHBOARD ---
+  const calculateStudyTimeToday = () => {
+    // Retorna minutos totais estudados hoje (simulado)
+    return completedToday.length * 30; // Assumindo 30 min por tópico completado
+  };
+
+  const calculateCompletionRate = () => {
+    // Calcula a taxa de conclusão semanal
+    const weekNumber = getWeekNumber(new Date());
+    const thisWeekCompletions = completedThisWeek.filter(item => item.week === weekNumber).length;
+    return Math.min(100, Math.round((thisWeekCompletions / studyGoals.weeklyTopics) * 100));
   };
 
   // --- YOUTUBE LINK GENERATOR ---
@@ -198,6 +404,220 @@ export default function App() {
       ></div>
     </div>
   );
+
+  // Componente de Pomodoro Timer
+  const PomodoroTimer = () => {
+    const formatTime = (time) => {
+      const minutes = Math.floor(time / 60);
+      const seconds = time % 60;
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    useEffect(() => {
+      let interval = null;
+      if (isTimerRunning && studyTimer > 0) {
+        interval = setInterval(() => {
+          setStudyTimer(time => time - 1);
+        }, 1000);
+      } else if (isTimerRunning && studyTimer === 0) {
+        if (currentTimerMode === 'work') {
+          switchToBreak();
+        } else {
+          switchToWork();
+        }
+      }
+      return () => clearInterval(interval);
+    }, [isTimerRunning, studyTimer]);
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center">
+          <Timer className="mr-2 text-orange-500" />
+          Pomodoro Timer
+        </h3>
+        
+        <div className="text-center">
+          <div className={`text-5xl font-bold mb-4 ${currentTimerMode === 'work' ? 'text-red-500' : 'text-green-500'}`}>
+            {formatTime(studyTimer)}
+          </div>
+          
+          <div className="text-sm font-medium mb-4 capitalize">
+            {currentTimerMode === 'work' ? 'Tempo de Estudo' : 'Tempo de Pausa'}
+          </div>
+          
+          <div className="flex justify-center gap-3">
+            {!isTimerRunning ? (
+              <button 
+                onClick={startTimer}
+                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center"
+              >
+                <Play size={16} className="mr-2" />
+                Iniciar
+              </button>
+            ) : (
+              <button 
+                onClick={pauseTimer}
+                className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors flex items-center"
+              >
+                <Pause size={16} className="mr-2" />
+                Pausar
+              </button>
+            )}
+            
+            <button 
+              onClick={resetTimer}
+              className="px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              Reiniciar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Componente de Flashcards
+  const FlashcardModal = () => {
+    if (!selectedFlashcardTopic) return null;
+    
+    const flashcards = FLASHCARDS_DATA[selectedFlashcardTopic];
+    if (!flashcards || flashcards.length === 0) return null;
+    
+    const currentCard = flashcards[currentFlashcardIndex];
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 relative">
+          <button 
+            onClick={closeFlashcards}
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+          >
+            ✕
+          </button>
+          
+          <h3 className="text-lg font-semibold text-slate-700 mb-4">Flashcard</h3>
+          
+          <div className="bg-slate-50 rounded-lg p-6 mb-6 min-h-[150px] flex flex-col justify-center">
+            <p className="text-center text-slate-800 font-medium mb-2">{currentCard.question}</p>
+            {showAnswer && (
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <p className="text-center text-slate-600 italic">{currentCard.answer}</p>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-slate-500">
+              {currentFlashcardIndex + 1} de {flashcards.length}
+            </div>
+            
+            <div className="flex gap-2">
+              <button 
+                onClick={prevFlashcard}
+                disabled={currentFlashcardIndex === 0}
+                className={`p-2 rounded-lg ${currentFlashcardIndex === 0 ? 'text-slate-300' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Anterior
+              </button>
+              
+              <button 
+                onClick={toggleShowAnswer}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                {showAnswer ? 'Esconder' : 'Revelar'} Resposta
+              </button>
+              
+              <button 
+                onClick={nextFlashcard}
+                disabled={currentFlashcardIndex === flashcards.length - 1}
+                className={`p-2 rounded-lg ${currentFlashcardIndex === flashcards.length - 1 ? 'text-slate-300' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Próximo
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Componente de Metas de Estudo
+  const StudyGoals = () => {
+    const timeStudiedToday = calculateStudyTimeToday();
+    const weeklyCompletionRate = calculateCompletionRate();
+    
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center">
+          <Target className="mr-2 text-purple-500" />
+          Metas de Estudo
+        </h3>
+        
+        <div className="space-y-5">
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm font-medium text-slate-600">Tempo de estudo diário</span>
+              <span className="text-sm font-bold text-slate-700">{timeStudiedToday}/{studyGoals.dailyMinutes} min</span>
+            </div>
+            <ProgressBar 
+              percent={Math.min(100, (timeStudiedToday / studyGoals.dailyMinutes) * 100)} 
+              colorClass={timeStudiedToday >= studyGoals.dailyMinutes ? "bg-green-500" : "bg-blue-500"} 
+              height="h-2" 
+            />
+          </div>
+          
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm font-medium text-slate-600">Tópicos concluídos esta semana</span>
+              <span className="text-sm font-bold text-slate-700">
+                {completedThisWeek.filter(item => item.week === getWeekNumber(new Date())).length}/{studyGoals.weeklyTopics}
+              </span>
+            </div>
+            <ProgressBar 
+              percent={weeklyCompletionRate} 
+              colorClass={weeklyCompletionRate >= 100 ? "bg-green-500" : "bg-purple-500"} 
+              height="h-2" 
+            />
+          </div>
+          
+          <div className="pt-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">Meta diária (minutos)</label>
+            <input
+              type="range"
+              min="30"
+              max="300"
+              step="15"
+              value={studyGoals.dailyMinutes}
+              onChange={(e) => updateDailyGoal(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>30 min</span>
+              <span className="font-medium">{studyGoals.dailyMinutes} min</span>
+              <span>5 horas</span>
+            </div>
+          </div>
+          
+          <div className="pt-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">Meta semanal (tópicos)</label>
+            <input
+              type="range"
+              min="1"
+              max="30"
+              value={studyGoals.weeklyTopics}
+              onChange={(e) => updateWeeklyGoal(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>1 tópico</span>
+              <span className="font-medium">{studyGoals.weeklyTopics} tópicos</span>
+              <span>30 tópicos</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
@@ -290,6 +710,12 @@ export default function App() {
               ))}
             </div>
 
+            {/* Pomodoro Timer and Study Goals */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <PomodoroTimer />
+              <StudyGoals />
+            </div>
+
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex items-start">
               <Youtube className="shrink-0 mr-3 mt-0.5 text-red-600" size={18} />
               <div>
@@ -367,6 +793,15 @@ export default function App() {
                                     <ExternalLink size={10} className="ml-1 opacity-50" />
                                 </button>
                                 
+                                <button
+                                    onClick={() => openFlashcards(topic.id)}
+                                    className="flex items-center px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-md border border-blue-100 transition-all text-xs font-semibold whitespace-nowrap"
+                                    title="Ver Flashcards"
+                                >
+                                    <Brain size={14} className="mr-1.5" />
+                                    Flashcards
+                                </button>
+                                
                                 <div className="w-px h-6 bg-slate-200 hidden sm:block"></div>
 
                                 <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-hide">
@@ -395,6 +830,8 @@ export default function App() {
                 )}
               </div>
             ))}
+            
+            <FlashcardModal />
             
             <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 text-center">
                 <p className="flex items-center justify-center gap-2">
